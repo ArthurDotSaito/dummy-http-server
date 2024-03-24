@@ -6,9 +6,11 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <asm-generic/socket.h>
 
 #define BUFFER_SIZE 1024
 char *response_ok = "HTTP/1.1 200 OK\r\n\r\n";
+char *response_not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
 
 int main()
 {
@@ -76,6 +78,11 @@ int main()
 	{
 		printf("Request from client: %s\n", request_buffer);
 	}
+
+	char *path = strtok(request_buffer, " ");
+	path = strtok(NULL, " ");
+
+	char *reponse = (strcmp(path, "/") == 0) ? response_ok : response_not_found;
 
 	if (send(client_fd, response_ok, strlen(response_ok), 0) < 0)
 	{
