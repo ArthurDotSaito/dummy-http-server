@@ -82,9 +82,9 @@ int main()
 	char *path = strtok(request_buffer, " ");
 	path = strtok(NULL, " ");
 
-	char *reponse = (strcmp(path, "/") == 0) ? response_ok : response_not_found;
+	char *response = (strcmp(path, "/") == 0) ? response_ok : response_not_found;
 
-	if (send(client_fd, response_ok, strlen(response_ok), 0) < 0)
+	if (send(client_fd, response, strlen(response), 0) < 0)
 	{
 		printf("Error: %s \n", strerror(errno));
 	}
