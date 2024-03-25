@@ -6,16 +6,50 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <asm-generic/socket.h>
 
 #define BUFFER_SIZE 4096
 char *response_ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
 char *response_not_found = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
+char *directory;
 
-int main()
+void send_file_content(int client_fd, const char *file_path)
+{
+	FILE *file = fopen(file_path, "r");
+	if (!file)
+	{
+		char *response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nFile not found";
+		send(client_fd, response, strlen(response), 0);
+		return;
+	}
+
+	// Go to end of file and get file size
+	fseek(file, 0, SEEK_END);
+	long file_size = ftell(file);
+	// return to file start and start reading
+	rewind(file);
+
+	char header[BUFFER_SIZE];
+	int header_len = sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %ld\r\n\r\n", file_size);
+	send(client_fd, header, header_len, 0);
+
+	char buffer[BUFFER_SIZE];
+	size_t bytes_read;
+	while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0)
+	{
+		send(client_fd, buffer, bytes_read, 0);
+	}
+
+	fclose(file);
+}
+
+int main(int argc, char *argv[])
 {
 	// Disable output buffering
 	setbuf(stdout, NULL);
+
+	directory = argv[2];
 
 	int server_fd, client_addr_len;
 	struct sockaddr_in client_addr;
@@ -140,6 +174,12 @@ int main()
 								 "\r\n"
 								 "%s",
 								 strlen(user_agent), user_agent);
+			}
+			else if (strncmp(path, "/files/", 7) == 0)
+			{
+				char file_path[BUFFER_SIZE];
+				snprintf(file_path, BUFFER_SIZE, "%s%s", directory, path + 6);
+				send_file_content(client_fd, file_path);
 			}
 			else
 			{
