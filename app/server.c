@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <asm-generic/socket.h>
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 4096
 char *response_ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
 char *response_not_found = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
 
@@ -82,6 +82,18 @@ int main()
 	char *method = strtok(request_buffer, " ");
 	char *path = strtok(NULL, " ");
 
+	char *headerLine = NULL;
+	char user_agent[BUFFER_SIZE] = {0};
+
+	while ((headerLine = strtok(NULL, "\r\n")) && *headerLine)
+	{
+		if (strncmp(headerLine, "User-Agent:", 11) == 0)
+		{
+			strncpy(user_agent, headerLine + 12, sizeof(user_agent) - 1);
+			break;
+		}
+	}
+
 	char response[BUFFER_SIZE];
 	char body[BUFFER_SIZE] = {0};
 	int length;
@@ -108,6 +120,16 @@ int main()
 						 "%s",
 						 strlen(message), message);
 	}
+	else if (strcmp(path, "/user-agent") == 0 && strlen(user_agent) > 0)
+	{
+		length = sprintf(response,
+						 "HTTP/1.1 200 OK\r\n"
+						 "Content-Type: text/plain\r\n"
+						 "Content-Length: %zu\r\n"
+						 "\r\n"
+						 "%s",
+						 strlen(user_agent), user_agent);
+	}
 	else
 	{
 		strcpy(body, "Not Found");
@@ -120,7 +142,7 @@ int main()
 						 9, body);
 	}
 
-	if (send(client_fd, response, strlen(response), 0) < 0)
+	if (send(client_fd, response, length, 0) < 0)
 	{
 		printf("Send failed: %s\n", strerror(errno));
 	}
