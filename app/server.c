@@ -9,8 +9,8 @@
 #include <asm-generic/socket.h>
 
 #define BUFFER_SIZE 1024
-char *response_ok = "HTTP/1.1 200 OK\r\n\r\n";
-char *response_not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
+char *response_ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
+char *response_not_found = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
 
 int main()
 {
@@ -79,14 +79,50 @@ int main()
 		printf("Request from client: %s\n", request_buffer);
 	}
 
-	char *path = strtok(request_buffer, " ");
-	path = strtok(NULL, " ");
+	char *method = strtok(request_buffer, " ");
+	char *path = strtok(NULL, " ");
 
-	char *response = (strcmp(path, "/") == 0) ? response_ok : response_not_found;
+	char response[BUFFER_SIZE];
+	char body[BUFFER_SIZE] = {0};
+	int length;
+
+	if (strcmp(path, "/") == 0)
+	{
+		strcpy(body, "OK");
+		length = sprintf(response,
+						 "HTTP/1.1 200 OK\r\n"
+						 "Content-Type: text/plain\r\n"
+						 "Content-Length: %d\r\n"
+						 "\r\n"
+						 "%s",
+						 2, body);
+	}
+	else if (strncmp(path, "/echo/", 6) == 0)
+	{
+		char *message = path + 6;
+		length = sprintf(response,
+						 "HTTP/1.1 200 OK\r\n"
+						 "Content-Type: text/plain\r\n"
+						 "Content-Length: %zu\r\n"
+						 "\r\n"
+						 "%s",
+						 strlen(message), message);
+	}
+	else
+	{
+		strcpy(body, "Not Found");
+		length = sprintf(response,
+						 "HTTP/1.1 404 Not Found\r\n"
+						 "Content-Type: text/plain\r\n"
+						 "Content-Length: %d\r\n"
+						 "\r\n"
+						 "%s",
+						 9, body);
+	}
 
 	if (send(client_fd, response, strlen(response), 0) < 0)
 	{
-		printf("Error: %s \n", strerror(errno));
+		printf("Send failed: %s\n", strerror(errno));
 	}
 
 	close(server_fd);
