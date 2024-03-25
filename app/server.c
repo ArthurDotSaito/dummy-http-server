@@ -56,99 +56,116 @@ int main()
 	}
 
 	printf("Waiting for a client to connect...\n");
-	client_addr_len = sizeof(client_addr);
-
-	const int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
-	if (client_fd < 0)
+	while (1)
 	{
-		printf("Accept failed: %s \n", strerror(errno));
-		return 1;
-	}
+		client_addr_len = sizeof(client_addr);
 
-	printf("Client connected\n");
-
-	char request_buffer[BUFFER_SIZE];
-
-	if (read(client_fd, request_buffer, BUFFER_SIZE) < 0)
-	{
-		printf("Read failed: %s \n", strerror(errno));
-		return 1;
-	}
-	else
-	{
-		printf("Request from client: %s\n", request_buffer);
-	}
-
-	char *method = strtok(request_buffer, " ");
-	char *path = strtok(NULL, " ");
-
-	char *headerLine = NULL;
-	char user_agent[BUFFER_SIZE] = {0};
-
-	while ((headerLine = strtok(NULL, "\r\n")) && *headerLine)
-	{
-		if (strncmp(headerLine, "User-Agent:", 11) == 0)
+		int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
+		if (client_fd < 0)
 		{
-			strncpy(user_agent, headerLine + 12, sizeof(user_agent) - 1);
-			break;
+			printf("Accept failed: %s \n", strerror(errno));
+			continue;
+		}
+
+		int pid = fork();
+		if (pid < 0)
+		{
+			printf("Fork failed: %s\n", strerror(errno));
+			close(client_fd);
+		}
+		else if (pid == 0)
+		{
+			close(server_fd);
+			printf("Client connected\n");
+
+			char request_buffer[BUFFER_SIZE];
+
+			if (read(client_fd, request_buffer, BUFFER_SIZE) < 0)
+			{
+				printf("Read failed: %s \n", strerror(errno));
+				return 1;
+			}
+			else
+			{
+				printf("Request from client: %s\n", request_buffer);
+			}
+
+			char *method = strtok(request_buffer, " ");
+			char *path = strtok(NULL, " ");
+
+			char *headerLine = NULL;
+			char user_agent[BUFFER_SIZE] = {0};
+
+			while ((headerLine = strtok(NULL, "\r\n")) && *headerLine)
+			{
+				if (strncmp(headerLine, "User-Agent:", 11) == 0)
+				{
+					strncpy(user_agent, headerLine + 12, sizeof(user_agent) - 1);
+					break;
+				}
+			}
+
+			char response[BUFFER_SIZE];
+			char body[BUFFER_SIZE] = {0};
+			int length;
+
+			if (strcmp(path, "/") == 0)
+			{
+				strcpy(body, "OK");
+				length = sprintf(response,
+								 "HTTP/1.1 200 OK\r\n"
+								 "Content-Type: text/plain\r\n"
+								 "Content-Length: %d\r\n"
+								 "\r\n"
+								 "%s",
+								 2, body);
+			}
+			else if (strncmp(path, "/echo/", 6) == 0)
+			{
+				char *message = path + 6;
+				length = sprintf(response,
+								 "HTTP/1.1 200 OK\r\n"
+								 "Content-Type: text/plain\r\n"
+								 "Content-Length: %zu\r\n"
+								 "\r\n"
+								 "%s",
+								 strlen(message), message);
+			}
+			else if (strcmp(path, "/user-agent") == 0 && strlen(user_agent) > 0)
+			{
+				length = sprintf(response,
+								 "HTTP/1.1 200 OK\r\n"
+								 "Content-Type: text/plain\r\n"
+								 "Content-Length: %zu\r\n"
+								 "\r\n"
+								 "%s",
+								 strlen(user_agent), user_agent);
+			}
+			else
+			{
+				strcpy(body, "Not Found");
+				length = sprintf(response,
+								 "HTTP/1.1 404 Not Found\r\n"
+								 "Content-Type: text/plain\r\n"
+								 "Content-Length: %d\r\n"
+								 "\r\n"
+								 "%s",
+								 9, body);
+			}
+
+			if (send(client_fd, response, length, 0) < 0)
+			{
+				printf("Send failed: %s\n", strerror(errno));
+			}
+
+			close(client_fd);
+			exit(0);
+		}
+		else
+		{
+			close(client_fd);
 		}
 	}
-
-	char response[BUFFER_SIZE];
-	char body[BUFFER_SIZE] = {0};
-	int length;
-
-	if (strcmp(path, "/") == 0)
-	{
-		strcpy(body, "OK");
-		length = sprintf(response,
-						 "HTTP/1.1 200 OK\r\n"
-						 "Content-Type: text/plain\r\n"
-						 "Content-Length: %d\r\n"
-						 "\r\n"
-						 "%s",
-						 2, body);
-	}
-	else if (strncmp(path, "/echo/", 6) == 0)
-	{
-		char *message = path + 6;
-		length = sprintf(response,
-						 "HTTP/1.1 200 OK\r\n"
-						 "Content-Type: text/plain\r\n"
-						 "Content-Length: %zu\r\n"
-						 "\r\n"
-						 "%s",
-						 strlen(message), message);
-	}
-	else if (strcmp(path, "/user-agent") == 0 && strlen(user_agent) > 0)
-	{
-		length = sprintf(response,
-						 "HTTP/1.1 200 OK\r\n"
-						 "Content-Type: text/plain\r\n"
-						 "Content-Length: %zu\r\n"
-						 "\r\n"
-						 "%s",
-						 strlen(user_agent), user_agent);
-	}
-	else
-	{
-		strcpy(body, "Not Found");
-		length = sprintf(response,
-						 "HTTP/1.1 404 Not Found\r\n"
-						 "Content-Type: text/plain\r\n"
-						 "Content-Length: %d\r\n"
-						 "\r\n"
-						 "%s",
-						 9, body);
-	}
-
-	if (send(client_fd, response, length, 0) < 0)
-	{
-		printf("Send failed: %s\n", strerror(errno));
-	}
-
-	close(server_fd);
-	close(client_fd);
 
 	return 0;
 }
