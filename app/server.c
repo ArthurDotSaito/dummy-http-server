@@ -7,11 +7,12 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <asm-generic/socket.h>
 
 #define BUFFER_SIZE 4096
 char *response_ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
+char *response_ok_unknown_type = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %ld\r\n\r\n";
 char *response_not_found = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
+char *response_internal_error = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
 char *directory;
 
 void send_file_content(int client_fd, const char *file_path)
@@ -19,8 +20,9 @@ void send_file_content(int client_fd, const char *file_path)
 	FILE *file = fopen(file_path, "r");
 	if (!file)
 	{
-		char *response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nFile not found";
-		send(client_fd, response, strlen(response), 0);
+		char buffer[BUFFER_SIZE];
+		sprintf(buffer, response_not_found, 13, "File not found");
+		send(client_fd, buffer, strlen(buffer), 0);
 		return;
 	}
 
@@ -31,7 +33,7 @@ void send_file_content(int client_fd, const char *file_path)
 	rewind(file);
 
 	char header[BUFFER_SIZE];
-	int header_len = sprintf(header, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %ld\r\n\r\n", file_size);
+	int header_len = sprintf(header, response_ok_unknown_type, file_size);
 	send(client_fd, header, header_len, 0);
 
 	char buffer[BUFFER_SIZE];
@@ -145,52 +147,28 @@ int main(int argc, char *argv[])
 
 			if (strcmp(path, "/") == 0)
 			{
-				strcpy(body, "OK");
-				length = sprintf(response,
-								 "HTTP/1.1 200 OK\r\n"
-								 "Content-Type: text/plain\r\n"
-								 "Content-Length: %d\r\n"
-								 "\r\n"
-								 "%s",
-								 2, body);
+				length = sprintf(response, response_ok, 2, "OK");
 			}
 			else if (strncmp(path, "/echo/", 6) == 0)
 			{
 				char *message = path + 6;
-				length = sprintf(response,
-								 "HTTP/1.1 200 OK\r\n"
-								 "Content-Type: text/plain\r\n"
-								 "Content-Length: %zu\r\n"
-								 "\r\n"
-								 "%s",
-								 strlen(message), message);
+				length = sprintf(response, response_ok, strlen(message), message);
 			}
 			else if (strcmp(path, "/user-agent") == 0 && strlen(user_agent) > 0)
 			{
-				length = sprintf(response,
-								 "HTTP/1.1 200 OK\r\n"
-								 "Content-Type: text/plain\r\n"
-								 "Content-Length: %zu\r\n"
-								 "\r\n"
-								 "%s",
-								 strlen(user_agent), user_agent);
+				length = sprintf(response, response_ok, strlen(user_agent), user_agent);
 			}
 			else if (strncmp(path, "/files/", 7) == 0)
 			{
 				char file_path[BUFFER_SIZE];
 				snprintf(file_path, BUFFER_SIZE, "%s%s", directory, path + 6);
 				send_file_content(client_fd, file_path);
+				close(client_fd);
+				exit(0);
 			}
 			else
 			{
-				strcpy(body, "Not Found");
-				length = sprintf(response,
-								 "HTTP/1.1 404 Not Found\r\n"
-								 "Content-Type: text/plain\r\n"
-								 "Content-Length: %d\r\n"
-								 "\r\n"
-								 "%s",
-								 9, body);
+				length = sprintf(response, response_not_found, 9, body);
 			}
 
 			if (send(client_fd, response, length, 0) < 0)
